@@ -1,0 +1,26 @@
+name: MSBuild C++ CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup MSBuild path
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Build project with MSBuild
+      run: msbuild path/to/your/solution.sln /p:Configuration=Release /p:Platform="x86"
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: compiled-app
+        path: path/to/your/output/file.exe
