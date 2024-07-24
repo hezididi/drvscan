@@ -119,69 +119,60 @@ static BOOL is_wow_64(PCSTR path)
 
 std::vector<FILE_INFO> get_user_modules(DWORD pid)
 {
-	std::vector<FILE_INFO> info;
+    std::vector<FILE_INFO> info;
+    HANDLE snp = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
 
+    if (snp == INVALID_HANDLE_VALUE)
+    {
+        return info;
+    }
 
-	HANDLE snp = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+    MODULEENTRY32 module_entry{};
+    module_entry.dwSize = sizeof(module_entry);
 
-	if (snp == INVALID_HANDLE_VALUE)
-	{
-		return info;
-	}
+    if (!Module32First(snp, &module_entry))
+    {
+        CloseHandle(snp);
+        return info;
+    }
 
-	MODULEENTRY32 module_entry{};
-	module_entry.dwSize = sizeof(module_entry);
+    char narrowPath[260];
+    WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowPath, 260, NULL, NULL);
+    BOOL wow64_process = is_wow_64(narrowPath);
 
-	if (!Module32First(snp, &module_entry))
-	{
-		CloseHandle(snp);
-		return info;
-	}
+    do
+    {
+        if (wow64_process)
+        {
+            if (wcsstr(module_entry.szExePath, L"SYSTEM32") || wcsstr(module_entry.szExePath, L"System32"))
+            {
+                continue;
+            }
+        }
+
+        if (wcsstr(module_entry.szExePath, L"WindowsApps"))
+        {
+            continue;
+        }
+
+        char narrowExePath[260];
+        char narrowModuleName[260];
+        WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowExePath, 260, NULL, NULL);
+        WideCharToMultiByte(CP_UTF8, 0, module_entry.szModule, -1, narrowModuleName, 260, NULL, NULL);
+
+        FILE_INFO temp;
+        temp.base = (QWORD)module_entry.modBaseAddr;
+        temp.size = module_entry.modBaseSize;
+        temp.path = std::string(narrowExePath);
+        temp.name = std::string(narrowModuleName);
+
+        info.push_back(temp);
+    } while (Module32Next(snp, &module_entry));
+
+    CloseHandle(snp);
+
+    return info;
 }
-
-	
-char narrowPath[520];
-WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowPath, sizeof(narrowPath), NULL, NULL);
-BOOL wow64_process = is_wow_64(narrowPath);
-
-do
-{
-    if (wow64_process)
-    {
-        if (wcsstr(module_entry.szExePath, L"SYSTEM32"))
-        {
-            continue;
-        }
-
-        if (wcsstr(module_entry.szExePath, L"System32"))
-        {
-            continue;
-        }
-    }
-
-    if (wcsstr(module_entry.szExePath, L"WindowsApps"))
-    {
-        continue;
-    }
-
-    FILE_INFO temp;
-    temp.base = (QWORD)module_entry.modBaseAddr;
-    temp.size = module_entry.modBaseSize;
-
-    char narrowPath[520];
-    WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowPath, sizeof(narrowPath), NULL, NULL);
-    temp.path = std::string(narrowPath);
-
-    char narrowName[260];
-    WideCharToMultiByte(CP_UTF8, 0, module_entry.szModule, -1, narrowName, sizeof(narrowName), NULL, NULL);
-    temp.name = std::string(narrowName);
-
-    info.push_back(temp);
-} while(Module32Next(snp, &module_entry));
-
-CloseHandle(snp);
-return info;
-
 
 std::vector<PROCESS_INFO> get_system_processes()
 {
