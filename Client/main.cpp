@@ -30,7 +30,7 @@ int main(int argc, char **argv)
 			printf(
 				"\n\n"
 
-				"--scan                 scan target process memory changes\n"
+				"--scan                 scans target process memory changes\n"
 				"    --pid              (optional) target process id\n"
 				"    --usecache         (optional) we use local cache instead of original PE files\n"
 				"    --savecache        (optional) dump target process modules to disk\n\n"
