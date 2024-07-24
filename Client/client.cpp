@@ -119,6 +119,7 @@ void *FindPatternEx(unsigned char* base, QWORD size, unsigned char* pattern, uns
 }
 
 QWORD FindPattern(QWORD base, unsigned char* pattern, unsigned char* mask)
+
 {
 	if (base == 0)
 	{
