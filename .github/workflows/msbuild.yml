@@ -1,0 +1,27 @@
+name: Build Client Project
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up MSBuild path
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Build project with MSBuild
+      run: msbuild Client/Client.sln /p:Configuration=Release /p:Platform="x86"
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: compiled-application
+        path: Client/Release/Client.exe
