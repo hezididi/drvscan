@@ -137,6 +137,7 @@ std::vector<FILE_INFO> get_user_modules(DWORD pid)
 		CloseHandle(snp);
 		return info;
 	}
+}
 
 	
 char narrowPath[520];
