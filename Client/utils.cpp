@@ -136,6 +136,7 @@ std::vector<FILE_INFO> get_user_modules(DWORD pid)
         return info;
     }
 
+    // 确保 szExePath 为宽字符类型，并且传递正确参数给 WideCharToMultiByte
     char narrowPath[260];
     WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowPath, 260, NULL, NULL);
     BOOL wow64_process = is_wow_64(narrowPath);
@@ -155,6 +156,7 @@ std::vector<FILE_INFO> get_user_modules(DWORD pid)
             continue;
         }
 
+        // 确保 szExePath 和 szModule 为宽字符类型，并且传递正确参数给 WideCharToMultiByte
         char narrowExePath[260];
         char narrowModuleName[260];
         WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowExePath, 260, NULL, NULL);
@@ -173,6 +175,9 @@ std::vector<FILE_INFO> get_user_modules(DWORD pid)
 
     return info;
 }
+
+
+
 std::vector<PROCESS_INFO> get_system_processes()
 {
 	std::vector<PROCESS_INFO> process_info;
