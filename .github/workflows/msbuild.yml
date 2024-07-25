@@ -2,9 +2,9 @@ name: Build and Test
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]  
   pull_request:
-    branches: [ master ]
+    branches: [ main ]  
 
 jobs:
   build:
@@ -24,7 +24,6 @@ jobs:
       run: |
         msbuild Client/Client.sln /p:Configuration=Release /p:Platform=x64 /p:AdditionalDependencies="ntdll.lib"
         dir ./Client/Release /b /s *.exe
-
 
     - name: Run Tests
       run: msbuild /t:VSTest Client/Client.sln
