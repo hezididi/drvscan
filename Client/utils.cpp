@@ -173,7 +173,6 @@ std::vector<FILE_INFO> get_user_modules(DWORD pid)
 
     return info;
 }
-
 std::vector<PROCESS_INFO> get_system_processes()
 {
 	std::vector<PROCESS_INFO> process_info;
