@@ -1,177 +1,108 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "utils.h"
+#define _CRT_SECURE_NO_WARNINGS
+#include "utils.h"
+
+#include <windows.h>
+#include <tlhelp32.h>
+#include <vector>
+#include <string>
 
 #pragma pack(push, 8)
 typedef struct _RTL_PROCESS_MODULE_INFORMATION
 {
-	HANDLE Section;
-	PVOID MappedBase;
-	PVOID ImageBase;
-	ULONG ImageSize;
-	ULONG Flags;
-	USHORT LoadOrderIndex;
-	USHORT InitOrderIndex;
-	USHORT LoadCount;
-	USHORT OffsetToFileName;
-	UCHAR FullPathName[256];
+    HANDLE Section;
+    PVOID MappedBase;
+    PVOID ImageBase;
+    ULONG ImageSize;
+    ULONG Flags;
+    USHORT LoadOrderIndex;
+    USHORT InitOrderIndex;
+    USHORT LoadCount;
+    USHORT OffsetToFileName;
+    UCHAR FullPathName[256];
 } RTL_PROCESS_MODULE_INFORMATION, *PRTL_PROCESS_MODULE_INFORMATION;
 
 typedef struct _RTL_PROCESS_MODULES
 {
-	ULONG NumberOfModules;
-	RTL_PROCESS_MODULE_INFORMATION Modules[1];
+    ULONG NumberOfModules;
+    RTL_PROCESS_MODULE_INFORMATION Modules[1];
 } RTL_PROCESS_MODULES, *PRTL_PROCESS_MODULES;
 
 #pragma comment(lib, "ntdll.lib")
 extern "C" __kernel_entry NTSTATUS NtQuerySystemInformation(
-ULONG SystemInformationClass,
-PVOID                    SystemInformation,
-ULONG                    SystemInformationLength,
-PULONG                   ReturnLength
+    ULONG SystemInformationClass,
+    PVOID SystemInformation,
+    ULONG SystemInformationLength,
+    PULONG ReturnLength
 );
 
-std::vector<FILE_INFO> get_kernel_modules(void)
-{
-	std::vector<FILE_INFO> driver_information;
+struct FILE_INFO {
+    PVOID base;
+    ULONG size;
+    std::string path;
+    std::string name;
+};
 
+std::vector<FILE_INFO> get_kernel_modules() {
+    std::vector<FILE_INFO> driver_information;
+    ULONG req = 0;
+    NTSTATUS status = NtQuerySystemInformation(11, nullptr, 0, &req);
+    if (status != 0xC0000004) {
+        return driver_information;
+    }
 
-	ULONG req = 0;
-	NTSTATUS status = NtQuerySystemInformation(11, 0, 0, &req);
-	if (status != 0xC0000004)
-	{
-		return driver_information;
-	}
+    auto system_modules = reinterpret_cast<PRTL_PROCESS_MODULES>(VirtualAlloc(nullptr, req, MEM_COMMIT, PAGE_READWRITE));
+    if (!system_modules) {
+        return driver_information;
+    }
 
-	PRTL_PROCESS_MODULES system_modules = (PRTL_PROCESS_MODULES)VirtualAlloc(NULL, req, MEM_COMMIT, PAGE_READWRITE);
+    status = NtQuerySystemInformation(11, system_modules, req, &req);
+    if (status != 0) {
+        VirtualFree(system_modules, 0, MEM_RELEASE);
+        return driver_information;
+    }
 
-	status = NtQuerySystemInformation(11, system_modules, req, &req);
+    for (ULONG i = 0; i < system_modules->NumberOfModules; i++) {
+        const auto& entry = system_modules->Modules[i];
+        FILE_INFO temp;
+        temp.base = entry.ImageBase;
+        temp.size = entry.ImageSize;
+        temp.path = std::string(reinterpret_cast<char*>(entry.FullPathName));
+        temp.name = std::string(reinterpret_cast<char*>(&entry.FullPathName[entry.OffsetToFileName]));
 
-	if (status != 0)
-	{
-		VirtualFree(system_modules, 0, MEM_RELEASE);
-		return driver_information;
-	}
+        driver_information.push_back(temp);
+    }
 
-	for (ULONG i = system_modules->NumberOfModules; i--;)
-	{
-		RTL_PROCESS_MODULE_INFORMATION entry = system_modules->Modules[i];	
-		char *sub_string = strstr((char *const)entry.FullPathName, "system32");
-		if (sub_string == 0)
-		{
-			sub_string = strstr((char *const)entry.FullPathName, "System32");
-		}
-
-		std::string path;
-		if (sub_string)
-		{
-			path = "C:\\Windows\\" + std::string(sub_string);
-		}
-		else
-		{
-			path = std::string((const char *)entry.FullPathName);
-		}
-
-		PCSTR name = (PCSTR)&entry.FullPathName[entry.OffsetToFileName];
-
-		FILE_INFO temp_information;
-		temp_information.path = path;
-		temp_information.name = name;
-		temp_information.base = (QWORD)entry.ImageBase;
-		temp_information.size = (QWORD)entry.ImageSize;
-		driver_information.push_back(temp_information);	
-	}
-	
-	VirtualFree(system_modules, 0, MEM_RELEASE);
-
-	return driver_information;
+    VirtualFree(system_modules, 0, MEM_RELEASE);
+    return driver_information;
 }
 
-typedef struct tagMODULEENTRY32EX
-{
-    DWORD   dwSize;
-    DWORD   th32ModuleID;       // This module
-    DWORD   th32ProcessID;      // owning process
-    DWORD   GlblcntUsage;       // Global usage count on the module
-    DWORD   ProccntUsage;       // Module usage count in th32ProcessID's context
-    DWORD   modBaseAddr;        // Base address of module in th32ProcessID's context
-    DWORD   modBaseSize;        // Size in bytes of module starting at modBaseAddr
-    DWORD   hModule;            // The hModule of this module in th32ProcessID's context
-    char    szModule[MAX_MODULE_NAME32 + 1];
-    char    szExePath[MAX_PATH];
-} MODULEENTRY32EX;
-
-static BOOL is_wow_64(PCSTR path)
-{
-	FILE *f = fopen(path, "rb");
-
-	if (f == 0)
-	{
-		return 0;
-	}
-
-	char buffer[0x1000]{};
-	fread(buffer, sizeof(buffer), 1, f);
-
-	fclose(f);
-
-	return pe::nt::is_wow64(pe::get_nt_headers((QWORD)buffer));
-}
-
-std::vector<FILE_INFO> get_user_modules(DWORD pid)
-{
+std::vector<FILE_INFO> get_user_modules(DWORD pid) {
     std::vector<FILE_INFO> info;
     HANDLE snp = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-
-    if (snp == INVALID_HANDLE_VALUE)
-    {
+    if (snp == INVALID_HANDLE_VALUE) {
         return info;
     }
 
     MODULEENTRY32 module_entry{};
     module_entry.dwSize = sizeof(module_entry);
 
-    if (!Module32First(snp, &module_entry))
-    {
-        CloseHandle(snp);
-        return info;
+    if (Module32First(snp, &module_entry)) {
+        do {
+            char narrowPath[260];
+            WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowPath, sizeof(narrowPath), NULL, NULL);
+            FILE_INFO temp;
+            temp.base = module_entry.modBaseAddr;
+            temp.size = module_entry.modBaseSize;
+            temp.path = narrowPath;
+            temp.name = module_entry.szModule;
+
+            info.push_back(temp);
+        } while (Module32Next(snp, &module_entry));
     }
 
-    // Correct usage of WideCharToMultiByte
-    char narrowPath[260];
-    WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowPath, 260, NULL, NULL);
-    BOOL wow64_process = is_wow_64(narrowPath);
-
-    do
-    {
-        if (wow64_process)
-        {
-            if (wcsstr(module_entry.szExePath, L"SYSTEM32") || wcsstr(module_entry.szExePath, L"System32"))
-            {
-                continue;
-            }
-        }
-
-        if (wcsstr(module_entry.szExePath, L"WindowsApps"))
-        {
-            continue;
-        }
-
-        char narrowExePath[260];
-        char narrowModuleName[260];
-        WideCharToMultiByte(CP_UTF8, 0, module_entry.szExePath, -1, narrowExePath, 260, NULL, NULL);
-        WideCharToMultiByte(CP_UTF8, 0, module_entry.szModule, -1, narrowModuleName, 260, NULL, NULL);
-
-        FILE_INFO temp;
-        temp.base = (QWORD)module_entry.modBaseAddr;
-        temp.size = module_entry.modBaseSize;
-        temp.path = std::string(narrowExePath);
-        temp.name = std::string(narrowModuleName);
-
-        info.push_back(temp);
-    } while (Module32Next(snp, &module_entry));
-
     CloseHandle(snp);
-
     return info;
 }
 
